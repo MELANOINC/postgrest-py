@@ -12,6 +12,9 @@ from pydantic import BaseModel
 
 from .version import __version__
 
+# Compiled regex pattern for base64url validation (used in JWT validation)
+_BASE64URL_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
+
 
 class SyncClient(BaseClient):
     @deprecated(
@@ -74,7 +77,7 @@ def model_validate_json(model: Type[TBaseModel], contents) -> TBaseModel:
         return model.parse_raw(contents)
 
 
-def is_valid_jwt(token: str) -> bool:
+def is_valid_jwt(token: Any) -> bool:
     """
     Validates if a string is a properly formatted JWT token.
     
@@ -82,7 +85,7 @@ def is_valid_jwt(token: str) -> bool:
     separated by dots: header.payload.signature
     
     Args:
-        token: The token string to validate
+        token: The token to validate (typically a string)
         
     Returns:
         True if the token is a valid JWT format, False otherwise
@@ -96,13 +99,10 @@ def is_valid_jwt(token: str) -> bool:
         return False
     
     # Check if each part is valid base64url encoding
-    # Base64url uses characters: A-Z, a-z, 0-9, -, _
-    base64url_pattern = re.compile(r'^[A-Za-z0-9_-]+$')
-    
     for part in parts:
         if not part:  # Empty parts are not allowed
             return False
-        if not base64url_pattern.match(part):
+        if not _BASE64URL_PATTERN.match(part):
             return False
     
     # Additional validation: try to decode the header and payload
@@ -118,7 +118,7 @@ def is_valid_jwt(token: str) -> bool:
             # Replace base64url characters with base64
             part = part.replace('-', '+').replace('_', '/')
             base64.b64decode(part)
-    except Exception:
+    except (ValueError, TypeError, base64.binascii.Error):
         return False
     
     return True
