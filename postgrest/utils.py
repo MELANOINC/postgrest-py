@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import re
 from typing import Any, Type, TypeVar, cast, get_origin
 from urllib.parse import urlparse
 
@@ -9,6 +11,9 @@ from httpx import Client as BaseClient  # noqa: F401
 from pydantic import BaseModel
 
 from .version import __version__
+
+# Compiled regex pattern for base64url validation (used in JWT validation)
+_BASE64URL_PATTERN = re.compile(r'^[A-Za-z0-9_-]+$')
 
 
 class SyncClient(BaseClient):
@@ -70,3 +75,50 @@ def model_validate_json(model: Type[TBaseModel], contents) -> TBaseModel:
     except AttributeError:
         # pydantic < 2
         return model.parse_raw(contents)
+
+
+def is_valid_jwt(token: Any) -> bool:
+    """
+    Validates if a string is a properly formatted JWT token.
+    
+    A valid JWT token consists of three base64url-encoded parts
+    separated by dots: header.payload.signature
+    
+    Args:
+        token: The token to validate (typically a string)
+        
+    Returns:
+        True if the token is a valid JWT format, False otherwise
+    """
+    if not token or not isinstance(token, str):
+        return False
+    
+    # JWT should have exactly 3 parts separated by dots
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    
+    # Check if each part is valid base64url encoding
+    for part in parts:
+        if not part:  # Empty parts are not allowed
+            return False
+        if not _BASE64URL_PATTERN.match(part):
+            return False
+    
+    # Additional validation: try to decode the header and payload
+    # to ensure they are valid base64url
+    try:
+        # Add padding if needed for base64 decoding
+        for i in range(2):  # Only validate header and payload, not signature
+            part = parts[i]
+            # Add padding
+            padding = 4 - (len(part) % 4)
+            if padding != 4:
+                part += '=' * padding
+            # Replace base64url characters with base64
+            part = part.replace('-', '+').replace('_', '/')
+            base64.b64decode(part)
+    except (ValueError, TypeError, base64.binascii.Error):
+        return False
+    
+    return True

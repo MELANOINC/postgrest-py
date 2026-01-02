@@ -31,6 +31,7 @@ from .types import (
     RequestMethod,
     ReturnMethod,
 )
+from .utils import is_valid_jwt
 from .version import __version__
 
 __all__ = [
@@ -58,5 +59,6 @@ __all__ = [
     "RequestMethod",
     "ReturnMethod",
     "Timeout",
+    "is_valid_jwt",
     "__version__",
 ]

@@ -11,4 +11,5 @@ Examples
     :caption: More examples:
 
         Basic Queries <basic_queries>
+        JWT Token Validation <jwt_validation>
         Logging Requests <logging>
