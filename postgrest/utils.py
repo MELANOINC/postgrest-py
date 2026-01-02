@@ -158,7 +158,8 @@ def handle_request_error(response: RequestResponse) -> None:
     Raises:
         APIError: Always raises an APIError with details from the response
     """
-    # Import here to avoid circular dependency
+    # Import here to avoid circular dependency between utils.py and exceptions.py
+    # exceptions.py uses generate_default_error_message which formats response data
     from .exceptions import APIError, APIErrorFromJSON, generate_default_error_message
     
     try:
