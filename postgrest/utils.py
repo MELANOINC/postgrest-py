@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 from deprecation import deprecated
 from httpx import AsyncClient  # noqa: F401
 from httpx import Client as BaseClient  # noqa: F401
-from pydantic import BaseModel
+from httpx import Response as RequestResponse
+from pydantic import BaseModel, ValidationError
 
 from .version import __version__
 
@@ -122,3 +123,46 @@ def is_valid_jwt(token: Any) -> bool:
         return False
     
     return True
+
+
+def parse_text_search_type(type_: str | None) -> str:
+    """
+    Parse text search type option into PostgREST format.
+    
+    Args:
+        type_: The text search type ('plain', 'phrase', or 'web_search')
+        
+    Returns:
+        The corresponding PostgREST type prefix ('pl', 'ph', 'w', or '')
+    """
+    if type_ == "plain":
+        return "pl"
+    elif type_ == "phrase":
+        return "ph"
+    elif type_ == "web_search":
+        return "w"
+    return ""
+
+
+def handle_request_error(response: RequestResponse) -> None:
+    """
+    Handle HTTP request errors by parsing and raising appropriate APIError.
+    
+    This function attempts to parse the error response from the API and raise
+    an APIError with the parsed details. If parsing fails, it raises a generic
+    APIError with the response details.
+    
+    Args:
+        response: The HTTP response object from the failed request
+        
+    Raises:
+        APIError: Always raises an APIError with details from the response
+    """
+    # Import here to avoid circular dependency
+    from .exceptions import APIError, APIErrorFromJSON, generate_default_error_message
+    
+    try:
+        json_obj = model_validate_json(APIErrorFromJSON, response.content)
+        raise APIError(dict(json_obj))
+    except ValidationError:
+        raise APIError(generate_default_error_message(response))

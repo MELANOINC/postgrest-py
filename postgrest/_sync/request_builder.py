@@ -20,7 +20,12 @@ from ..base_request_builder import (
 )
 from ..exceptions import APIError, APIErrorFromJSON, generate_default_error_message
 from ..types import ReturnMethod
-from ..utils import get_origin_and_cast, model_validate_json
+from ..utils import (
+    get_origin_and_cast,
+    handle_request_error,
+    model_validate_json,
+    parse_text_search_type,
+)
 
 _ReturnT = TypeVar("_ReturnT")
 
@@ -61,23 +66,19 @@ class SyncQueryRequestBuilder(Generic[_ReturnT]):
             params=self.params,
             headers=self.headers,
         )
-        try:
-            if r.is_success:
-                if self.http_method != "HEAD":
-                    body = r.text
-                    if self.headers.get("Accept") == "text/csv":
+        if r.is_success:
+            if self.http_method != "HEAD":
+                body = r.text
+                if self.headers.get("Accept") == "text/csv":
+                    return body
+                if self.headers.get(
+                    "Accept"
+                ) and "application/vnd.pgrst.plan" in self.headers.get("Accept"):
+                    if "+json" not in self.headers.get("Accept"):
                         return body
-                    if self.headers.get(
-                        "Accept"
-                    ) and "application/vnd.pgrst.plan" in self.headers.get("Accept"):
-                        if "+json" not in self.headers.get("Accept"):
-                            return body
-                return APIResponse[_ReturnT].from_http_request_response(r)
-            else:
-                json_obj = model_validate_json(APIErrorFromJSON, r.content)
-                raise APIError(dict(json_obj))
-        except ValidationError as e:
-            raise APIError(generate_default_error_message(r))
+            return APIResponse[_ReturnT].from_http_request_response(r)
+        else:
+            handle_request_error(r)
 
 
 class SyncSingleRequestBuilder(Generic[_ReturnT]):
@@ -116,16 +117,12 @@ class SyncSingleRequestBuilder(Generic[_ReturnT]):
             params=self.params,
             headers=self.headers,
         )
-        try:
-            if (
-                200 <= r.status_code <= 299
-            ):  # Response.ok from JS (https://developer.mozilla.org/en-US/docs/Web/API/Response/ok)
-                return SingleAPIResponse[_ReturnT].from_http_request_response(r)
-            else:
-                json_obj = model_validate_json(APIErrorFromJSON, r.content)
-                raise APIError(dict(json_obj))
-        except ValidationError as e:
-            raise APIError(generate_default_error_message(r))
+        if (
+            200 <= r.status_code <= 299
+        ):  # Response.ok from JS (https://developer.mozilla.org/en-US/docs/Web/API/Response/ok)
+            return SingleAPIResponse[_ReturnT].from_http_request_response(r)
+        else:
+            handle_request_error(r)
 
 
 class SyncMaybeSingleRequestBuilder(SyncSingleRequestBuilder[_ReturnT]):
@@ -241,14 +238,7 @@ class SyncSelectRequestBuilder(
     def text_search(
         self, column: str, query: str, options: dict[str, Any] = {}
     ) -> SyncFilterRequestBuilder[_ReturnT]:
-        type_ = options.get("type")
-        type_part = ""
-        if type_ == "plain":
-            type_part = "pl"
-        elif type_ == "phrase":
-            type_part = "ph"
-        elif type_ == "web_search":
-            type_part = "w"
+        type_part = parse_text_search_type(options.get("type"))
         config_part = f"({options.get('config')})" if options.get("config") else ""
         self.params = self.params.add(column, f"{type_part}fts{config_part}.{query}")
 
