@@ -1,6 +1,7 @@
 """Tests for JWT token validation utilities."""
 
 import pytest
+
 from postgrest.utils import is_valid_jwt
 
 
